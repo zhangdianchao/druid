@@ -1752,8 +1752,11 @@ public class DruidDataSource extends DruidAbstractDataSource implements DruidDat
 
             lastFatalErrorTimeMillis = lastErrorTimeMillis;
             onFatalError = true;
+            fatalErrorCount++;
             lastFatalError = error;
             lastFatalErrorSql = sql;
+
+            emptySignal();
         } finally {
             lock.unlock();
         }
@@ -2975,10 +2978,22 @@ public class DruidDataSource extends DruidAbstractDataSource implements DruidDat
                 return;
             }
 
+            int fatalErrorIncrement = fatalErrorCount - fatalErrorCountLastShrink;
+            fatalErrorCountLastShrink = fatalErrorCount;
+
             final int checkCount = poolingCount - minIdle;
             final long currentTimeMillis = System.currentTimeMillis();
             for (int i = 0; i < poolingCount; ++i) {
                 DruidConnectionHolder connection = connections[i];
+
+                if (fatalErrorIncrement > 0) {
+                    if (lastFatalErrorTimeMillis < connection.lastActiveTimeMillis) {
+                        keepAliveConnections[keepAliveCount++] = connection;
+                        continue;
+                    } else {
+                        break;
+                    }
+                }
 
                 if (checkTime) {
                     if (phyTimeoutMillis > 0) {
